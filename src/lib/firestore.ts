@@ -2,10 +2,13 @@ import {
   Timestamp,
   addDoc,
   collection,
+  deleteDoc,
+  doc,
   getDocs,
   orderBy,
   query,
   serverTimestamp,
+  updateDoc,
   where,
 } from "firebase/firestore";
 import { getFirestoreDb } from "./firebase";
@@ -128,4 +131,55 @@ export async function addCampaign(ownerId: string, data: Omit<Campaign, "id" | "
     ...data,
     ownerId,
   });
+}
+
+export async function deleteTransaction(transactionId: string) {
+  const db = getDb();
+  if (!db) return;
+  const ref = doc(db, "transactions", transactionId);
+  await deleteDoc(ref);
+}
+
+export async function updateTransaction(
+  transactionId: string,
+  data: Partial<Omit<Transaction, "id" | "ownerId" | "createdAt">>
+) {
+  const db = getDb();
+  if (!db) return;
+  const ref = doc(db, "transactions", transactionId);
+  await updateDoc(ref, data);
+}
+
+export async function deletePaymentMethod(paymentMethodId: string) {
+  const db = getDb();
+  if (!db) return;
+  const ref = doc(db, "paymentMethods", paymentMethodId);
+  await deleteDoc(ref);
+}
+
+export async function updatePaymentMethod(
+  paymentMethodId: string,
+  data: Partial<Omit<PaymentMethod, "id" | "ownerId">>
+) {
+  const db = getDb();
+  if (!db) return;
+  const ref = doc(db, "paymentMethods", paymentMethodId);
+  await updateDoc(ref, data);
+}
+
+export async function deleteCampaign(campaignId: string) {
+  const db = getDb();
+  if (!db) return;
+  const ref = doc(db, "campaigns", campaignId);
+  await deleteDoc(ref);
+}
+
+export async function updateCampaign(
+  campaignId: string,
+  data: Partial<Omit<Campaign, "id" | "ownerId">>
+) {
+  const db = getDb();
+  if (!db) return;
+  const ref = doc(db, "campaigns", campaignId);
+  await updateDoc(ref, data);
 }

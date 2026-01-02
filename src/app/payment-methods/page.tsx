@@ -9,7 +9,7 @@ import { AuthGuard } from "@/components/auth-guard";
 import { useAuth } from "@/components/auth-context";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { formatCurrencyBRL } from "@/lib/format";
-import { addPaymentMethod, listPaymentMethods, listTransactions } from "@/lib/firestore";
+import { addPaymentMethod, deletePaymentMethod, listPaymentMethods, listTransactions, updatePaymentMethod } from "@/lib/firestore";
 import { PaymentMethod, Transaction } from "@/lib/types";
 
 const methodSchema = z.object({
@@ -26,6 +26,8 @@ export default function PaymentMethodsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState<PaymentMethod | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const methodForm = useForm<MethodFormValues>({
     resolver: zodResolver(methodSchema),
@@ -46,6 +48,16 @@ export default function PaymentMethodsPage() {
     }
     void load();
   }, [user]);
+
+  useEffect(() => {
+    if (editing) {
+      methodForm.reset({
+        name: editing.name,
+        type: editing.type,
+        active: editing.active,
+      });
+    }
+  }, [editing, methodForm]);
 
   const totalsByMethod = useMemo(() => {
     return paymentMethods.map((pm) => {
@@ -75,7 +87,13 @@ export default function PaymentMethodsPage() {
     if (!user) return;
     setSaving(true);
     const payload = methodSchema.parse(values);
-    await addPaymentMethod(user.uid, payload);
+    
+    if (editing) {
+      await updatePaymentMethod(editing.id, payload);
+    } else {
+      await addPaymentMethod(user.uid, payload);
+    }
+    
     const [pm, tx] = await Promise.all([
       listPaymentMethods(user.uid),
       listTransactions(user.uid),
@@ -83,8 +101,33 @@ export default function PaymentMethodsPage() {
     setPaymentMethods(pm);
     setTransactions(tx);
     methodForm.reset({ name: "", type: "cartao", active: true });
+    setEditing(null);
     setSaving(false);
   });
+
+  const handleEdit = (pm: PaymentMethod) => {
+    setEditing(pm);
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+  };
+
+  const handleCancelEdit = () => {
+    setEditing(null);
+    methodForm.reset({ name: "", type: "cartao", active: true });
+  };
+
+  const handleDelete = async (pmId: string) => {
+    if (!user) return;
+    if (!confirm("Tem certeza que deseja excluir este método de pagamento?")) return;
+    setDeleting(pmId);
+    await deletePaymentMethod(pmId);
+    const [pm, tx] = await Promise.all([
+      listPaymentMethods(user.uid),
+      listTransactions(user.uid),
+    ]);
+    setPaymentMethods(pm);
+    setTransactions(tx);
+    setDeleting(null);
+  };
 
   return (
     <AuthGuard>
@@ -174,6 +217,21 @@ export default function PaymentMethodsPage() {
                     <p className="text-xs text-slate-500">
                       {pm.count} lançamentos vinculados
                     </p>
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={() => handleEdit(pm)}
+                        className="flex-1 rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                      >
+                        ✏️ Editar
+                      </button>
+                      <button
+                        onClick={() => handleDelete(pm.id)}
+                        disabled={deleting === pm.id}
+                        className="flex-1 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                      >
+                        {deleting === pm.id ? "..." : "🗑️ Excluir"}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -183,10 +241,12 @@ export default function PaymentMethodsPage() {
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3">
               <p className="text-sm font-semibold text-slate-800">
-                Novo método de pagamento
+                {editing ? "Editar método de pagamento" : "Novo método de pagamento"}
               </p>
               <p className="text-xs text-slate-500">
-                Grava direto na coleção paymentMethods com o seu UID.
+                {editing
+                  ? "Atualize os dados do método de pagamento."
+                  : "Grava direto na coleção paymentMethods com o seu UID."}
               </p>
             </div>
             <form className="grid gap-3 md:grid-cols-3" onSubmit={handleCreate}>
@@ -210,14 +270,23 @@ export default function PaymentMethodsPage() {
                   <option value="outro">Outro</option>
                 </select>
               </div>
-              <div className="flex items-end md:col-span-1">
+              <div className="flex items-end md:col-span-1 gap-2">
                 <button
                   type="submit"
                   disabled={saving}
-                  className="w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-60"
+                  className="flex-1 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-60"
                 >
-                  {saving ? "Salvando..." : "Adicionar método"}
+                  {saving ? "Salvando..." : editing ? "Atualizar" : "Adicionar"}
                 </button>
+                {editing && (
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-300"
+                  >
+                    Cancelar
+                  </button>
+                )}
               </div>
             </form>
           </div>

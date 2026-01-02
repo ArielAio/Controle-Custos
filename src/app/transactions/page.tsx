@@ -11,9 +11,11 @@ import { KpiCard } from "@/components/ui/kpi-card";
 import { formatCurrencyBRL, formatDate } from "@/lib/format";
 import {
   addTransaction as addTransactionFirestore,
+  deleteTransaction,
   listCampaigns,
   listPaymentMethods,
   listTransactions,
+  updateTransaction,
 } from "@/lib/firestore";
 import { Campaign, PaymentMethod, Transaction, TransactionType } from "@/lib/types";
 
@@ -36,6 +38,8 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Transaction | null>(null);
 
   const filtered = useMemo(() => {
     if (filterType === "all") return transactions;
@@ -87,13 +91,35 @@ export default function TransactionsPage() {
     void load();
   }, [user]);
 
+  useEffect(() => {
+    if (editing) {
+      form.reset({
+        type: editing.type,
+        amount: editing.amount,
+        paymentMethodId: editing.paymentMethodId,
+        campaignId: editing.campaignId ?? "",
+        note: editing.note ?? "",
+        occurredAt: editing.occurredAt.split("T")[0],
+      });
+    }
+  }, [editing, form]);
+
   const handleSubmit = form.handleSubmit(async (values) => {
     if (!user) return;
     setSaving(true);
-    await addTransactionFirestore(user.uid, {
-      ...values,
-      currency: "BRL",
-    });
+    
+    if (editing) {
+      await updateTransaction(editing.id, {
+        ...values,
+        currency: "BRL",
+      });
+    } else {
+      await addTransactionFirestore(user.uid, {
+        ...values,
+        currency: "BRL",
+      });
+    }
+    
     const tx = await listTransactions(user.uid);
     setTransactions(tx);
     form.reset({
@@ -104,8 +130,36 @@ export default function TransactionsPage() {
       note: "",
       occurredAt: new Date().toISOString().slice(0, 10),
     });
+    setEditing(null);
     setSaving(false);
   });
+
+  const handleDelete = async (transactionId: string) => {
+    if (!user) return;
+    if (!confirm("Tem certeza que deseja excluir este lançamento?")) return;
+    setDeleting(transactionId);
+    await deleteTransaction(transactionId);
+    const tx = await listTransactions(user.uid);
+    setTransactions(tx);
+    setDeleting(null);
+  };
+
+  const handleEdit = (transaction: Transaction) => {
+    setEditing(transaction);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleCancelEdit = () => {
+    setEditing(null);
+    form.reset({
+      type: "saida",
+      amount: 0,
+      paymentMethodId: paymentMethods[0]?.id ?? "",
+      campaignId: "",
+      note: "",
+      occurredAt: new Date().toISOString().slice(0, 10),
+    });
+  };
 
   return (
     <AuthGuard>
@@ -195,6 +249,7 @@ export default function TransactionsPage() {
                         <th>Método</th>
                         <th>Campanha</th>
                         <th>Valor</th>
+                        <th>Ações</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -225,6 +280,23 @@ export default function TransactionsPage() {
                               {t.type === "saida" ? "-" : "+"}
                               {formatCurrencyBRL(t.amount)}
                             </td>
+                            <td>
+                              <button
+                                onClick={() => handleDelete(t.id)}
+                                disabled={deleting === t.id}
+                                className="rounded px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                                title="Excluir lançamento"
+                              >
+                                {deleting === t.id ? "..." : "🗑️"}
+                              </button>
+                              <button
+                                onClick={() => handleEdit(t)}
+                                className="ml-1 rounded px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                                title="Editar lançamento"
+                              >
+                                ✏️
+                              </button>
+                            </td>
                           </tr>
                         );
                       })}
@@ -237,10 +309,12 @@ export default function TransactionsPage() {
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="mb-4">
                 <p className="text-sm font-semibold text-slate-800">
-                  Novo lançamento
+                  {editing ? "Editar lançamento" : "Novo lançamento"}
                 </p>
                 <p className="text-xs text-slate-500">
-                  Grava direto no Firestore com validação client-side.
+                  {editing
+                    ? "Atualize os dados do lançamento."
+                    : "Grava direto no Firestore com validação client-side."}
                 </p>
               </div>
               <form className="space-y-3" onSubmit={handleSubmit}>
@@ -339,8 +413,18 @@ export default function TransactionsPage() {
                   disabled={saving || paymentMethods.length === 0}
                   className="w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-60"
                 >
-                  {saving ? "Salvando..." : "Salvar"}
+                  {saving ? "Salvando..." : editing ? "Atualizar" : "Salvar"}
                 </button>
+                
+                {editing && (
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="w-full rounded-lg bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-300"
+                  >
+                    Cancelar
+                  </button>
+                )}
               </form>
             </div>
           </div>

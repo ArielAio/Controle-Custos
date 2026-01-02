@@ -9,7 +9,7 @@ import { AuthGuard } from "@/components/auth-guard";
 import { useAuth } from "@/components/auth-context";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { formatCurrencyBRL, formatDate } from "@/lib/format";
-import { addCampaign, listCampaigns, listTransactions } from "@/lib/firestore";
+import { addCampaign, deleteCampaign, listCampaigns, listTransactions, updateCampaign } from "@/lib/firestore";
 import { Campaign, Transaction } from "@/lib/types";
 
 const campaignSchema = z.object({
@@ -31,6 +31,8 @@ export default function CampaignsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState<Campaign | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const form = useForm<CampaignFormValues>({
     resolver: zodResolver(campaignSchema),
@@ -61,6 +63,21 @@ export default function CampaignsPage() {
     void load();
   }, [user]);
 
+  useEffect(() => {
+    if (editing) {
+      form.reset({
+        name: editing.name,
+        platform: editing.platform,
+        objective: editing.objective,
+        budget: editing.budget,
+        spent: editing.spent,
+        periodStart: editing.periodStart.split("T")[0],
+        periodEnd: editing.periodEnd.split("T")[0],
+        status: editing.status,
+      });
+    }
+  }, [editing, form]);
+
   const totals = useMemo(() => {
     const spend = campaigns.reduce((acc, c) => acc + c.spent, 0);
     const budget = campaigns.reduce((acc, c) => acc + c.budget, 0);
@@ -76,7 +93,13 @@ export default function CampaignsPage() {
   const handleCreate = form.handleSubmit(async (values) => {
     if (!user) return;
     setSaving(true);
-    await addCampaign(user.uid, values);
+    
+    if (editing) {
+      await updateCampaign(editing.id, values);
+    } else {
+      await addCampaign(user.uid, values);
+    }
+    
     const [camp, tx] = await Promise.all([
       listCampaigns(user.uid),
       listTransactions(user.uid),
@@ -93,8 +116,42 @@ export default function CampaignsPage() {
       periodEnd: new Date().toISOString().slice(0, 10),
       status: "ativa",
     });
+    setEditing(null);
     setSaving(false);
   });
+
+  const handleEdit = (campaign: Campaign) => {
+    setEditing(campaign);
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+  };
+
+  const handleCancelEdit = () => {
+    setEditing(null);
+    form.reset({
+      name: "",
+      platform: "Meta Ads",
+      objective: "",
+      budget: 0,
+      spent: 0,
+      periodStart: new Date().toISOString().slice(0, 10),
+      periodEnd: new Date().toISOString().slice(0, 10),
+      status: "ativa",
+    });
+  };
+
+  const handleDelete = async (campaignId: string) => {
+    if (!user) return;
+    if (!confirm("Tem certeza que deseja excluir esta campanha?")) return;
+    setDeleting(campaignId);
+    await deleteCampaign(campaignId);
+    const [camp, tx] = await Promise.all([
+      listCampaigns(user.uid),
+      listTransactions(user.uid),
+    ]);
+    setCampaigns(camp);
+    setTransactions(tx);
+    setDeleting(null);
+  };
 
   return (
     <AuthGuard>
@@ -149,6 +206,7 @@ export default function CampaignsPage() {
                     <th>Orçado</th>
                     <th>Gasto</th>
                     <th>Status</th>
+                    <th>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -179,6 +237,23 @@ export default function CampaignsPage() {
                           {c.status}
                         </span>
                       </td>
+                      <td>
+                        <button
+                          onClick={() => handleDelete(c.id)}
+                          disabled={deleting === c.id}
+                          className="rounded px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                          title="Excluir campanha"
+                        >
+                          {deleting === c.id ? "..." : "🗑️"}
+                        </button>
+                        <button
+                          onClick={() => handleEdit(c)}
+                          className="ml-1 rounded px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                          title="Editar campanha"
+                        >
+                          ✏️
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -188,9 +263,13 @@ export default function CampaignsPage() {
 
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3">
-              <p className="text-sm font-semibold text-slate-800">Nova campanha</p>
+              <p className="text-sm font-semibold text-slate-800">
+                {editing ? "Editar campanha" : "Nova campanha"}
+              </p>
               <p className="text-xs text-slate-500">
-                Grava direto na coleção campaigns com o seu UID.
+                {editing
+                  ? "Atualize os dados da campanha."
+                  : "Grava direto na coleção campaigns com o seu UID."}
               </p>
             </div>
             <form className="grid gap-3 md:grid-cols-3" onSubmit={handleCreate}>
@@ -263,14 +342,23 @@ export default function CampaignsPage() {
                   {...form.register("periodEnd")}
                 />
               </div>
-              <div className="flex items-end">
+              <div className="flex items-end gap-2">
                 <button
                   type="submit"
                   disabled={saving}
-                  className="w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-60"
+                  className="flex-1 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-60"
                 >
-                  {saving ? "Salvando..." : "Adicionar campanha"}
+                  {saving ? "Salvando..." : editing ? "Atualizar" : "Adicionar"}
                 </button>
+                {editing && (
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-300"
+                  >
+                    Cancelar
+                  </button>
+                )}
               </div>
             </form>
           </div>
