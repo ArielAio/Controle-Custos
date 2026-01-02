@@ -8,7 +8,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/components/auth-context";
-import { auth } from "@/lib/firebase";
+import { getFirebaseAuth } from "@/lib/firebase";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -57,6 +57,14 @@ function LoginPageContent() {
   const onSubmit = form.handleSubmit(async (values) => {
     setStatus("loading");
     setError(null);
+    const auth = getFirebaseAuth();
+    if (!auth) {
+      setStatus("error");
+      setError(
+        "Firebase Auth não está configurado. Configure as variáveis de ambiente.",
+      );
+      return;
+    }
     try {
       await signInWithEmailAndPassword(auth, values.email, values.password);
       setStatus("success");

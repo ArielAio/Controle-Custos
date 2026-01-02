@@ -14,7 +14,7 @@ import {
   onAuthStateChanged,
   setPersistence,
 } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { getFirebaseAuth } from "@/lib/firebase";
 
 type AuthState = {
   user: User | null;
@@ -29,6 +29,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     async function init() {
+      const auth = getFirebaseAuth();
+      if (!auth) {
+        console.warn("[firebase] Auth não inicializado; pulando listener.");
+        setLoading(false);
+        return;
+      }
       await setPersistence(auth, browserLocalPersistence);
       return onAuthStateChanged(auth, (currentUser) => {
         setUser(currentUser);
@@ -37,8 +43,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const unsubPromise = init();
     return () => {
-      // init returns a promise with unsubscribe or void; handle both.
-      void unsubPromise.then((unsub) => {
+      // init may return void if Firebase is unavailable.
+      if (!unsubPromise) return;
+      void Promise.resolve(unsubPromise).then((unsub) => {
         if (typeof unsub === "function") unsub();
       });
     };

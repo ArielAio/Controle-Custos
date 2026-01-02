@@ -3,16 +3,24 @@ import {
   addDoc,
   collection,
   getDocs,
-  getFirestore,
   orderBy,
   query,
   serverTimestamp,
   where,
 } from "firebase/firestore";
-import app from "./firebase";
+import { getFirestoreDb } from "./firebase";
 import { Campaign, PaymentMethod, Transaction } from "./types";
 
-const db = getFirestore(app);
+function getDb() {
+  const db = getFirestoreDb();
+  if (!db) {
+    console.warn(
+      "[firebase] Firestore não foi inicializado (variáveis ausentes ou ambiente server).",
+    );
+    return null;
+  }
+  return db;
+}
 
 function mapTimestampToDate(value: Timestamp | string | Date): string {
   if (value instanceof Timestamp) return value.toDate().toISOString();
@@ -21,6 +29,8 @@ function mapTimestampToDate(value: Timestamp | string | Date): string {
 }
 
 export async function listPaymentMethods(ownerId: string) {
+  const db = getDb();
+  if (!db) return [];
   const ref = collection(db, "paymentMethods");
   const snap = await getDocs(query(ref, where("ownerId", "==", ownerId)));
   return snap.docs.map(
@@ -36,6 +46,8 @@ export async function listPaymentMethods(ownerId: string) {
 }
 
 export async function listCampaigns(ownerId: string) {
+  const db = getDb();
+  if (!db) return [];
   const ref = collection(db, "campaigns");
   const snap = await getDocs(query(ref, where("ownerId", "==", ownerId)));
   return snap.docs.map(
@@ -56,6 +68,8 @@ export async function listCampaigns(ownerId: string) {
 }
 
 export async function listTransactions(ownerId: string) {
+  const db = getDb();
+  if (!db) return [];
   const ref = collection(db, "transactions");
   const snap = await getDocs(
     query(ref, where("ownerId", "==", ownerId), orderBy("occurredAt", "desc")),
@@ -83,6 +97,8 @@ export async function addTransaction(
     currency?: string;
   },
 ) {
+  const db = getDb();
+  if (!db) return;
   const ref = collection(db, "transactions");
   const payload = {
     ...data,
@@ -95,6 +111,8 @@ export async function addTransaction(
 }
 
 export async function addPaymentMethod(ownerId: string, data: Omit<PaymentMethod, "id" | "ownerId">) {
+  const db = getDb();
+  if (!db) return;
   const ref = collection(db, "paymentMethods");
   await addDoc(ref, {
     ...data,
@@ -103,6 +121,8 @@ export async function addPaymentMethod(ownerId: string, data: Omit<PaymentMethod
 }
 
 export async function addCampaign(ownerId: string, data: Omit<Campaign, "id" | "ownerId">) {
+  const db = getDb();
+  if (!db) return;
   const ref = collection(db, "campaigns");
   await addDoc(ref, {
     ...data,

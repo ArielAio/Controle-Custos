@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { ReactNode } from "react";
 import clsx from "clsx";
 import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { getFirebaseAuth } from "@/lib/firebase";
 import { useAuth } from "./auth-context";
 
 const navItems = [
@@ -18,6 +18,7 @@ const navItems = [
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { user } = useAuth();
+  const auth = getFirebaseAuth();
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -41,7 +42,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                   {user.email}
                 </div>
                 <button
-                  onClick={() => signOut(auth)}
+                  onClick={() => {
+                    if (!auth) return;
+                    void signOut(auth);
+                  }}
                   className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
                 >
                   Sair
